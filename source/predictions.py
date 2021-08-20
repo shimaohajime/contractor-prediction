@@ -1,3 +1,4 @@
+import sys
 import pandas as pd
 import numpy as np
 import pickle
@@ -288,12 +289,13 @@ plt.close()
 '''
 dt_model = tree.DecisionTreeClassifier(max_depth=4)
 scores = cross_val_score(dt_model, X_scaled, y.values.flatten(), cv=3)
-
+print('CV score - predict using a simple decision tree: {}'.format(scores.mean() ))
 
 ##Fairness constraint on industry
 industry = ['Industry_1', 'Industry_2', 'Industry_3', 'Industry_4']#'Industry_0',
 
 scores_cb = cross_val_score(dt_model, X_scaled.drop(columns=industry), y.values.flatten(), cv=3)
+print('CV score with CB using a simple decision tree: {}'.format(scores_cb.mean() ))
 
 class fair_model():
     def __init__(self, model, constraint, sensitive_features):
@@ -318,8 +320,19 @@ dt_dp = fair_model(dt_model, DemographicParity, industry)
 scores_dp = cross_val_score(dt_dp, X_scaled, y.values.flatten(), cv=3)
 dt_eo = fair_model(dt_model, EqualizedOdds, industry)
 scores_eo = cross_val_score(dt_eo, X_scaled, y.values.flatten(), cv=3)
+print('CV score with DP using a simple decision tree: {}'.format(scores_dp.mean() ))
+print('CV score with EO using a simple decision tree: {}'.format(scores_eo.mean() ))
 
 
+original_stdout = sys.stdout
+with open('result/fairness_cv.txt', 'w') as f:
+    sys.stdout = f
+    print('CV score - predict using a simple decision tree: {}'.format(scores.mean() ))
+    print('CV score with CB using a simple decision tree: {}'.format(scores_cb.mean() ))
+    print('CV score with DP using a simple decision tree: {}'.format(scores_dp.mean() ))
+    print('CV score with EO using a simple decision tree: {}'.format(scores_eo.mean() ))
+    # Reset the standard output
+    sys.stdout = original_stdout
 
 
 ##Train on full model to draw the tree diagram
