@@ -1,3 +1,8 @@
+'''
+Code to produce the analyses of data from deployment.
+One should run data_cleaning.py and predictions.py first to produce the necessary data/model.
+'''
+
 import pandas as pd
 import numpy  as np
 import pickle
@@ -18,6 +23,11 @@ from sklearn.ensemble import  RandomForestClassifier
 
 import matplotlib.pyplot as plt
 
+
+'''
+0. Read the data and clean so that the coding of deployment data and training data are matched.
+'''
+
 cols = [ 'datetime','years_of_service', 'industry', 'was_supervised','could_hire','who_assigned_tasks','supplied_equipment','how_was_paid','risk',\
 'exclusivity_of_services','set_work_hours','where_to_work','dress_restrictions','entry_id','workplace_location','age','gender','immigration_status','level_of_education','past_or_present','user_type']
 
@@ -30,12 +40,9 @@ df_deployed_raw = pd.read_csv('data/WorkerClassification20210622.csv',header=Non
 for col in ['industry', 'was_supervised','could_hire', 'who_assigned_tasks', 'supplied_equipment','how_was_paid', 'risk', 'exclusivity_of_services', 'set_work_hours','where_to_work', 'dress_restrictions', 'workplace_location']:
     df_deployed_raw[col] = df_deployed_raw[col].replace(0,np.nan)
 
-'''
-deployment data contains 0 but not None. Need to know the matching.
-'''
-
 df_canadian_cases = pd.read_csv('data/unprocessed_data.csv',index_col=0)
 
+##Mapping of the variable names
 col_match ={'Industry':'industry',
 'Length of service':'years_of_service',
 'Supervision/review of work':'was_supervised',
@@ -48,7 +55,6 @@ col_match ={'Industry':'industry',
 'Who sets the work hours':'set_work_hours',
 'Where the work is performed':'where_to_work',
 'Is the worker required to wear a uniform?':'dress_restrictions'}
-
 
 CategoricalFeatures = ['industry',#'Type of Job',#'Occupation',#'Province',
 'was_supervised',
@@ -76,7 +82,7 @@ df['source'] = np.array([1]*len(df_deployed_raw) +[0]*len(df_canadian_cases) )
 
 
 '''
-1. Predict if a sample is from the app or the court
+1. Predict if a sample is from the deployment or the court
 '''
 df_pred_source = df.drop(columns=['Outcome']).dropna()
 X = df_pred_source.drop(columns=['source'])
@@ -94,7 +100,7 @@ print('CV score - predict samples from deployment: {}'.format(scores.mean() ), f
 
 
 '''
-2. Prediction of the app samples.
+2. Contractor-employee prediction on the app samples.
 '''
 ##Prepare data
 df_c = df[df.source==0].dropna(thresh=3)
@@ -139,52 +145,10 @@ ax.hist([pred_proba_c.values.flatten(),pred_proba_d.values.flatten()],label=['co
 ax.legend()
 fig.savefig('result/6-deployment-confidence-hist.png')
 
-'''
-with open('data/scaler_fill{}.pickle'.format(3), 'rb') as f:
-    scaler = pickle.load(f)
-
-models = [
-'LogisticRegression',
-'RandomForestClassifier',
-'KNeighborsClassifier',
-'SVC',
-'GaussianProcessClassifier',
-'AdaBoostClassifier',
-'XGBClassifier'
-]
-
-pred_proba_df = df[['source']] #pd.DataFrame( index=df_filled[df_filled['source']==1].index )
-X  =  scaler.transform(df.drop(columns=['source']))
-for model_name in models:
-    pred_proba_df[model_name+ '_pred'] = -1
-    pred_proba_df[model_name+ '_proba0'] = -1
-    pred_proba_df[model_name+ '_proba1'] = -1
-    pred_proba_df[model_name+ '_confidence'] = -1
-
-for model_name in models:
-    model = load('result/{}.joblib'.format(model_name))
-    model.predict(X)
-    pred_proba_df.loc[:,model_name + '_pred'] = model.predict(X)
-    pred_proba_df.loc[:,model_name+ '_proba0'] = model.predict_proba(X)[:,0]
-    pred_proba_df.loc[:,model_name+ '_proba1'] = model.predict_proba(X)[:,1]
-    pred_proba_df.loc[:,model_name+ '_confidence'] = pred_proba_df[[model_name+ '_proba0',model_name+ '_proba1']].max(axis=1)
-
-fig,ax = plt.subplots(1,1)
-conf_court = pred_proba_df[pred_proba_df['source']==0]['RandomForestClassifier_confidence']
-conf_app = pred_proba_df[pred_proba_df['source']==1]['RandomForestClassifier_confidence']
-ax.hist([conf_court,conf_app],label=['training','deployment'],weights=[ np.ones(len(conf_court)) / len(conf_court),np.ones(len(conf_app)) / len(conf_app) ],bins=10,alpha=.8,color=['navy','darkred'])
-ax.legend()
-fig.savefig('result/6-deployment-confidence-hist.png')
-
-# conf_court = pred_proba_df[pred_proba_df['source']==0]['RandomForestClassifier_confidence']
-# conf_app = pred_proba_df[pred_proba_df['source']==1]['RandomForestClassifier_confidence']
-# ax.hist(conf_app,weights=np.ones(len(conf_app)) / len(conf_app),bins=10,alpha=.8,color='darkred')
-# fig.savefig('result/6-deployment-confidence-hist.png')
-'''
 
 
 '''
-3. Distribution of samples
+3. Visualize distribution of samples in reduced dimension.
 '''
 X  =  scaler.transform(df_filled.drop(columns=['source']))
 emb_method = PCA(n_components=2)#TSNE(n_components=2)

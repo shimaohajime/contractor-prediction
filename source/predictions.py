@@ -1,3 +1,8 @@
+'''
+Code to produce the main results of contractor-employee prediction.
+One should run data_cleaning.py first to produce the necessary data.
+'''
+
 import sys
 import pandas as pd
 import numpy as np
@@ -31,6 +36,9 @@ from fairlearn.reductions import ExponentiatedGradient, DemographicParity, Equal
 from sklearn.base import BaseEstimator
 
 
+'''
+0. Read data
+'''
 FillType = 3
 np.random.seed(0) #0
 
@@ -47,7 +55,7 @@ X_unscaled = pd.DataFrame( scaler.inverse_transform(X_scaled), columns=X_scaled.
 
 
 '''
-1. Clustering
+1. Clustering analysis.
 '''
 n_clusters = 2
 for emb_method in [TSNE(n_components=2), PCA(n_components=2)]:
@@ -70,8 +78,6 @@ for emb_method in [TSNE(n_components=2), PCA(n_components=2)]:
     print('Adjusted Rand score: {}'.format(adjusted_rand_score(label,y.values.flatten()) ) )
     print('Silhouette score: {}'.format(silhouette_score(X_scaled, label) ) )
 
-
-
 kmeans2 = KMeans(n_clusters=2)
 kmeans3 = KMeans(n_clusters=3)
 affinity_prop = AffinityPropagation()
@@ -89,8 +95,9 @@ for model in clustering_models:
 ari_result_df = pd.DataFrame(ari_scores, columns=['model', 'adjusted rand index', 'silhouette score'])
 ari_result_df.to_latex('result/clustering-ari.tex',index=False,float_format="%.3f",caption='Adjusted rand index between clusters and outcome and silhouette score. \label{tab:clustering-ari}')
 
+
 '''
-2. Perdiction
+2.1 Simple out-sample-prediction
 '''
 lr_model = LogisticRegression()
 rf_model= RandomForestClassifier()#(n_estimators=15, n_jobs=-1, max_depth = 6, oob_score=True)
@@ -112,6 +119,7 @@ for model in models:
 
 result_df.to_csv('result/sklearn-model-predictions_fill{}.csv'.format(FillType))
 
+
 '''
 2.2 CV score
 '''
@@ -131,18 +139,11 @@ cv_df.to_latex('result/sklearn-model-cvresult.tex',index=False,float_format="%.3
 pred_col = [col for col in result_df.keys() if col.startswith('Pred')]
 correct_col = [col for col in result_df.keys() if col.startswith('Correct')]
 
-# result_df['ensemble_pred'] = (result_df[pred_col].sum(axis=1)>2.5)
-# result_df['ensemble_correct'] = (result_df['ensemble_pred']==result_df['Outcome'])
-# result_df['ensemble_correct'].mean()
-# result_df[correct_col].corr()
-
 ##Scatter plot with correct/mis coloring
 mis_sample =  X_scaled[cv_pred.Outcome!=cv_pred.XGBClassifier].index
 fp_sample =  X_scaled[(cv_pred.Outcome==1) & (cv_pred.XGBClassifier==0)].index
 fn_sample =  X_scaled[(cv_pred.Outcome==0) & (cv_pred.XGBClassifier==1)].index
-
 correct_sample = X_scaled[cv_pred.Outcome==cv_pred.XGBClassifier].index
-
 for emb_method in [TSNE(n_components=2), PCA(n_components=2)]:
     #emb_method = TSNE(n_components=2)#PCA(n_components=2)#
     X_embedded = pd.DataFrame( emb_method.fit_transform(X_scaled), index=X_scaled.index)
@@ -161,7 +162,7 @@ for emb_method in [TSNE(n_components=2), PCA(n_components=2)]:
     plt.close()
 
 
-##See how sample size matters.
+##See how sample size matters by varying the CV folds.
 cv_score_all = []
 sample_size = []
 for folds in [2,3,5,10]:
@@ -181,17 +182,17 @@ cv_fold_df.to_latex('result/cv-vary-fold.tex',float_format="%.3f",header=False,c
 
 
 '''
-2.3 Re-train models with full sample
+2.3 Re-train models with full sample.
 '''
 for model in models:
     model_name = model.__class__.__name__
     model.fit(X_scaled.values, y.values.flatten())
     dump(model, 'result/{}.joblib'.format(model_name))
 
-
 ##Coefficient of logistic regression
 lr_coef = pd.DataFrame(lr_model.coef_.transpose(), index=X_scaled.keys(),columns=['Coefficient']  )
 lr_coef.to_latex('result/lr-coef.tex',float_format="%.3f",caption='Coefficients of logistic regression. \label{tab:lr-coef}')
+
 
 
 '''
@@ -246,11 +247,6 @@ temp2.to_latex('result/misclassified_cases.tex',index=True,float_format="%.3f",c
 
 
 
-# for model in models:
-#     pred_proba_df[model_name + '_correct'] = pred_proba_df[model_name + '_pred']==y['Outcome']
-
-
-
 
 '''
 3. SHAP values
@@ -275,17 +271,8 @@ plt.savefig('result/xgb_shap_with_mis_importance_fill{}.png'.format(FillType))
 plt.close()
 
 
-# for i in mis_sample.index[:5]:
-#     shap.plots.waterfall(shap_values[i],show=False)
-#     plt.gcf().set_size_inches(plt.gcf().get_size_inches()*np.array([2,1]))
-#     plt.savefig('result/xgb_shap_importance_fill{}_sample{}.png'.format(FillType, i))
-
-# explainer = shap.KernelExplainer(svm.predict_proba, X_train, link="logit")
-# shap_values = explainer.shap_values(X_test, nsamples=100)
-
-
 '''
-4. Simple tree model
+4. Transparency/Fairness analyses with a simple tree model
 '''
 dt_model = tree.DecisionTreeClassifier(max_depth=4)
 scores = cross_val_score(dt_model, X_scaled, y.values.flatten(), cv=3)

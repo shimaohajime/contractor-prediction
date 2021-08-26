@@ -1,3 +1,7 @@
+'''
+Code to prepare the Canadian contractor-employee dataset for the predictive analysis.
+This code should be run before predictions.py.
+'''
 
 import pandas as pd
 import numpy  as np
@@ -9,27 +13,26 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
 np.random.seed(0)
 
-'''
-Code to clean the Canadian contractor-employee dataset.
-'''
 
 #df_raw = pd.read_excel('data/length of service CA Sagaz July 21.xlsx',1)
 df_raw = pd.read_excel('data/Employee vs. Independent Contractor (August 4, 2021).xlsx',1)
-
 df_raw.index = df_raw.index+2 #Match to the row number in excel sheet.
 
-FillType = 3 #  0: keep missing data (0.82) - 1: replace by median (0.85) - 2: AI (0.87) [mean val scores, 20 Rand. For. ]
-##Hajime creating FillType=3, which treats missing as one category for categorical variables, and imputes by iterative imputer for continuous variable.
+
+## Method for filling the missing values by imputation.
+##FillType = 0, 1, 2 are the old implementation (not tested with the current version). The default is FillType=3.
+FillType = 3
 IndustryDummy = True #If True, use Indutry variable in one-hot coding.
 ScaleX = True #If True, apply standard scaler to the data.
 
-col = list(df_raw.columns[2:-2])
 
+##Clean and keep only the relevant columns.
+col = list(df_raw.columns[2:-2])
 df = df_raw.copy(deep=True).drop(columns=['Length of service']).rename(columns={'NEW LENGTH OF SERVICE':'Length of service'}).replace({0.:np.nan})
+##Note: 'NEW LENGTH OF SERVICE' is the cleaned data for service length. The original 'Length of service' contains human notes and should not be used.
 df=df.replace('nan',np.nan)
 df=df.replace('\xa0', 0)
 df=df[~np.isnan(df.Outcome)]
-
 
 RelevantFeatures=['Industry',
        'Length of service', 'Supervision/review of work',
@@ -38,14 +41,12 @@ RelevantFeatures=['Industry',
        'Exclusivity of services', 'Who sets the work hours',
        'Where the work is performed',
        'Is the worker required to wear a uniform?']
-
 CategoricalFeatures = ['Industry',#'Type of Job',#'Occupation',#'Province',
        'Supervision/review of work',
        'Delegation of tasks',
        'Where the work is performed',
        'Is the worker required to wear a uniform?']
 ContinuousFeatures = ['Length of service', 'Ownership of tools', 'Ability to hire employees', 'Chance of profit','Risk of loss','Exclusivity of services','Who sets the work hours']
-
 
 df = df[CategoricalFeatures+ContinuousFeatures+['Outcome']]
 df = df[df.Outcome.isin([1, 2])]
@@ -69,7 +70,7 @@ df_summary.to_latex('result/summary_stat.tex',index=True,caption='Summary of the
 
 if FillType<3:
     '''
-    Imputation based on the previous implementation.
+    Imputation based on the previous implementation. Not maintained.
     '''
     df=df.fillna(0)
     Imputed_Features=['Supervision/review of work',
@@ -118,7 +119,7 @@ elif FillType==3:
 
 assert df.isna().sum().sum()==0
 
-
+##Scale the X variables.
 if ScaleX:
     scaler = StandardScaler()
     scaler.fit(X)
@@ -128,9 +129,10 @@ if ScaleX:
 else:
     X_scaled = X
 
-##(0,1) is for (Employee, Contractor)
+##We set (0,1) is for (Employee, Contractor).
 y = y-1
 
+##Save the split data.
 X_train, X_val, Y_train, Y_val = train_test_split(X_scaled, y)
 X_scaled.to_csv('data/X_scaled_fill{}.csv'.format(FillType))
 X_train.to_csv('data/X_train_fill{}.csv'.format(FillType))
