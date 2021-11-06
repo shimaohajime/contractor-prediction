@@ -1,12 +1,17 @@
+import copy
 import pandas as pd
 import numpy as np
 
 #Read data
-Canadian_data = pd.read_excel('data/Employee vs. Independent Contractor (August 4, 2021).xlsx',1)
+# Canadian_data = pd.read_excel('data/Employee vs. Independent Contractor (August 4, 2021).xlsx',1)
+Canadian_data = pd.read_csv('data/Canada_merged_raw.csv')
+
 US_data = pd.read_excel('data/length of service US Scales (Borello) - July 21.xlsx')
 
-Canadian_data = Canadian_data.copy(deep=True).drop(columns=['Length of service']).rename(columns={'NEW LENGTH OF SERVICE':'Length of service'}).replace({0.:np.nan})
+# Canadian_data = Canadian_data.copy(deep=True).drop(columns=['Length of service']).rename(columns={'NEW LENGTH OF SERVICE':'Length of service'}).replace({0.:np.nan})
 Canadian_data=Canadian_data[~np.isnan(Canadian_data.Outcome)]
+Canadian_data = Canadian_data#.rename(columns={'Case name and (case citation)':'case_identifier'})
+
 
 #Clean US datasheet
 for var in US_data.keys():
@@ -16,7 +21,7 @@ US_data = US_data.copy(deep=True).drop(columns=['LENGTH OF SERVICE (months)']).r
 US_data=US_data[~US_data.Outcome.isna()]
 US_data=US_data[~US_data['CASE NO.'].isna()]
 US_data['RISK OF LOSS'] = US_data['RISK OF LOSS'].str.strip(' \n')
-
+US_data = US_data.rename(columns={'CASE NO.':'case_identifier'})
 
 #Create a mapping of values/keys using a comparison chart.
 ##Value map to the new numeric values consistent across US/Canada.
@@ -33,7 +38,10 @@ for var in Mapping_df['OLD US VARIABLE']:
 ##Variable map
 varname_map = Mapping_df[['US','CANADA']].dropna()
 
+
+
 ##Confirm all the variables in the map are in the original dataset.
+print('--- Confirm all the variables in the map are in the original dataset. ---')
 print('Variables in US:')
 for var in varname_map.US:
     if var in US_data.keys():
@@ -51,21 +59,35 @@ for var in varname_map.CANADA:
 Canada_map = Mapping_df[['CANADA','NEW CANADA VARIABLE','OLD CANADA VARIABLE']].rename(columns={'CANADA':'varname'})
 Canada_map = Canada_map[~Canada_map['NEW CANADA VARIABLE'].isna()]
 Canada_map = Canada_map.iloc[:-3]
-Canada_map = Canada_map.fillna(method='pad')
-Canada_variables = list(Canada_map['varname'].unique() )+ ['Outcome', 'Length of service']
+Canada_map['varname'] = Canada_map['varname'].fillna(method='pad')
+Canada_variables = list(Canada_map['varname'].unique() )+ ['Outcome', 'Length of service', 'case_identifier']
 
 US_map = Mapping_df[['US','NEW US VARIABLE','OLD US VARIABLE']].rename(columns={'US':'varname'})
 US_map = US_map[~US_map['NEW US VARIABLE'].isna()]
 US_map = US_map.iloc[:-3]
-US_map = US_map.fillna(method='pad')
-US_variables = list( US_map['varname'].unique() ) + ['Outcome', 'LENGTH OF SERVICE (months)']
+US_map['varname'] = US_map['varname'].fillna(method='pad')
+US_map = US_map.dropna()
+#US_map = US_map.fillna(method='pad')
+US_variables = list( US_map['varname'].unique() ) + ['Outcome', 'LENGTH OF SERVICE (months)', 'case_identifier']
 
 ##Convert values in Canadian data
+print('---Converting the values in Canadian data---')
+Canadian_data_ = copy.deepcopy(Canadian_data)
 for var in Canadian_data.keys():
-    var_map = Canada_map[Canada_map['varname']==var][['OLD CANADA VARIABLE','NEW CANADA VARIABLE']].set_index('OLD CANADA VARIABLE').to_dict()
-    Canadian_data[var] = Canadian_data[[var]].replace(var_map)
-Canadian_data2 = Canadian_data[Canada_variables]
+    var_map_temp = Canada_map[Canada_map['varname']==var][['OLD CANADA VARIABLE','NEW CANADA VARIABLE']].astype(float)
+    new_values = var_map_temp['NEW CANADA VARIABLE'].unique()
+    var_map = var_map_temp.set_index('OLD CANADA VARIABLE').to_dict()['NEW CANADA VARIABLE']
+    Canadian_data_[var] = Canadian_data[[var]].replace(var_map)
+
+Canadian_data2 = Canadian_data_[Canada_variables]
 Canadian_data2 =  Canadian_data2.replace('\xa0',np.nan)
+
+for var in Canadian_data2.keys():
+    new_values = Canada_map[Canada_map['varname']==var][['OLD CANADA VARIABLE','NEW CANADA VARIABLE']].astype(float)['NEW CANADA VARIABLE'].dropna().unique()
+    if not set(Canadian_data2[var].dropna().unique() ).issubset( set(new_values) ):
+        print('* Conversion may have failed in '+ var)
+        print('  - Converted values: {}'.format(Canadian_data2[var].dropna().unique()))
+        print('  - Supposed be in: {}'.format(new_values))
 
 ##Check if all the values are numeric
 unconverted_Canada = []
@@ -77,15 +99,24 @@ unconverted_Canada_df = pd.DataFrame(unconverted_Canada,columns=['variable','val
 
 
 ##Convert values in US data
+print('---Converting the values in US data---')
+US_data_ = copy.deepcopy(US_data)
 for var in US_data.keys():
-    var_map = US_map[US_map['varname']==var][['OLD US VARIABLE','NEW US VARIABLE']].set_index('OLD US VARIABLE').to_dict()['NEW US VARIABLE']
-    US_data[var] = US_data[[var]].replace(var_map)
-US_data2 = US_data[US_variables]
+    var_map_temp = US_map[US_map['varname']==var][['OLD US VARIABLE','NEW US VARIABLE']]
+    new_values = var_map_temp['NEW US VARIABLE'].unique()
+    var_map = var_map_temp.set_index('OLD US VARIABLE').to_dict()['NEW US VARIABLE']
+    US_data_[var] = US_data_[[var]].replace(var_map)
+US_data2 = US_data_[US_variables]
 US_data2['Length of service'] = round(US_data2['LENGTH OF SERVICE (months)']/12)
 US_data2 = US_data2.drop(columns=['LENGTH OF SERVICE (months)'])
 US_data2 = US_data2.replace({'Independent Contractor':2, 'Employee':1})
 
-
+for var in US_data2.keys():
+    new_values = US_map[US_map['varname']==var]['NEW US VARIABLE'].unique()
+    if not set(US_data2[var].dropna().unique() ).issubset( set(new_values) ):
+        print('*Conversion may have failed in '+ var)
+        print('  - Converted values: {}'.format(US_data2[var].dropna().unique()))
+        print('  - Supposed be in: {}'.format(new_values))
 
 ##Check if all the values are numeric
 for var in US_data2.keys():

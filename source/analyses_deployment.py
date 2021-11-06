@@ -23,10 +23,16 @@ from sklearn.ensemble import  RandomForestClassifier
 
 import matplotlib.pyplot as plt
 
+drop_if_missing = False #If integer, drop the samples with missing variables more than this number.
+
 
 '''
 0. Read the data and clean so that the coding of deployment data and training data are matched.
 '''
+FillType = 3
+drop_if_missing = 3 #If integer, drop the samples with missing variables more than this number.
+
+
 
 cols = [ 'datetime','years_of_service', 'industry', 'was_supervised','could_hire','who_assigned_tasks','supplied_equipment','how_was_paid','risk',\
 'exclusivity_of_services','set_work_hours','where_to_work','dress_restrictions','entry_id','workplace_location','age','gender','immigration_status','level_of_education','past_or_present','user_type']
@@ -40,10 +46,12 @@ df_deployed_raw = pd.read_csv('data/WorkerClassification20210622.csv',header=Non
 for col in ['industry', 'was_supervised','could_hire', 'who_assigned_tasks', 'supplied_equipment','how_was_paid', 'risk', 'exclusivity_of_services', 'set_work_hours','where_to_work', 'dress_restrictions', 'workplace_location']:
     df_deployed_raw[col] = df_deployed_raw[col].replace(0,np.nan)
 
-df_canadian_cases = pd.read_csv('data/unprocessed_data.csv',index_col=0)
+#df_canadian_cases = pd.read_csv('data/unprocessed_data.csv',index_col=0)
+#df_canadian_cases = pd.read_csv('data/Canadian_data_filled.csv',index_col=0)
+df_canadian_cases = pd.read_csv('data/processed_data_fill{}_dropmissing_{}.csv'.format(FillType,drop_if_missing))
 
 ##Mapping of the variable names
-col_match ={'Industry':'industry',
+col_match ={#'Industry':'industry',
 'Length of service':'years_of_service',
 'Supervision/review of work':'was_supervised',
 'Ability to hire employees':'could_hire',
@@ -56,7 +64,7 @@ col_match ={'Industry':'industry',
 'Where the work is performed':'where_to_work',
 'Is the worker required to wear a uniform?':'dress_restrictions'}
 
-CategoricalFeatures = ['industry',#'Type of Job',#'Occupation',#'Province',
+CategoricalFeatures = [#'industry',#'Type of Job',#'Occupation',#'Province',
 'was_supervised',
 'who_assigned_tasks',
 'where_to_work',
@@ -88,9 +96,9 @@ df_pred_source = df.drop(columns=['Outcome']).dropna()
 X = df_pred_source.drop(columns=['source'])
 y = df_pred_source['source'].values.flatten()
 
-scaler = StandardScaler()
-scaler.fit(X)
-X_scaled = pd.DataFrame(data = scaler.transform(X), columns = X.keys(), index=X.index)
+# scaler = StandardScaler()
+# scaler.fit(X)
+X_scaled = X#pd.DataFrame(data = scaler.transform(X), columns = X.keys(), index=X.index)
 
 rf_model= RandomForestClassifier()#(n_estimators=15, n_jobs=-1, max_depth = 6, oob_score=True)
 scores = cross_val_score(rf_model, X_scaled, y, cv=3)
@@ -103,8 +111,11 @@ print('CV score - predict samples from deployment: {}'.format(scores.mean() ), f
 2. Contractor-employee prediction on the app samples.
 '''
 ##Prepare data
-df_c = df[df.source==0].dropna(thresh=3)
-df_d = df[df.source==1].dropna(thresh=3)
+df_c = df[df.source==0]
+df_d = df[df.source==1]
+if drop_if_missing!=False:
+    df_c = df_c.dropna(thresh=drop_if_missing)
+    df_d = df_d.dropna(thresh=drop_if_missing)
 imp = IterativeImputer(max_iter=5, random_state=0)
 
 filled_array_c = imp.fit_transform(df_c.drop(columns=['Outcome','source']))
@@ -119,12 +130,12 @@ df_d_filled['Outcome'] = df_d['Outcome']
 model = RandomForestClassifier()
 X = df_c_filled.drop(columns=['Outcome'])
 y = df_c_filled['Outcome']
-scaler = StandardScaler()
-scaler.fit(X)
-X_scaled = pd.DataFrame(data = scaler.transform(X), columns = X.keys(), index=X.index)
+# scaler = StandardScaler()
+# scaler.fit(X)
+X_scaled = X#pd.DataFrame(data = scaler.transform(X), columns = X.keys(), index=X.index)
 
 X_dep = df_d_filled.drop(columns=['Outcome'])
-X_dep_scaled = pd.DataFrame(data = scaler.transform(X_dep), columns = X_dep.keys(), index=X_dep.index)
+X_dep_scaled = X_dep#pd.DataFrame(data = scaler.transform(X_dep), columns = X_dep.keys(), index=X_dep.index)
 
 kf = KFold(n_splits=3)
 pred_proba_c = pd.DataFrame(data={'confidence':np.nan}, index=X_scaled.index )
@@ -150,15 +161,18 @@ fig.savefig('result/6-deployment-confidence-hist.png')
 '''
 3. Visualize distribution of samples in reduced dimension.
 '''
-X  =  scaler.transform(df_filled.drop(columns=['source']))
 emb_method = PCA(n_components=2)#TSNE(n_components=2)
-pca = emb_method.fit(X[df_filled.reset_index()['source']==0])
-X_embedded = pd.DataFrame( pca.transform(X))
+pca = emb_method.fit(X_scaled)
+#X_embedded = pd.DataFrame( pca.transform(X))
 
 fig,ax = plt.subplots(1,1)
-emb_court = X_embedded[df_filled.reset_index()['source']==0]
-emb_app = X_embedded[df_filled.reset_index()['source']==1]
-ax.scatter(emb_court.loc[:,0],emb_court.loc[:,1],c='navy',alpha=.4,s=25,label='training')
-ax.scatter(emb_app.loc[:,0],emb_app.loc[:,1],c='darkred',alpha=.4,s=25,label='deployment')
+# emb_court = X_embedded[df.reset_index()['source']==0]
+# emb_app = X_embedded[df.reset_index()['source']==1]
+emb_court = pca.transform(X_scaled)
+emb_app = pca.transform(X_dep_scaled)
+ax.scatter(emb_court[:,0],emb_court[:,1],c='navy',alpha=.4,s=25,label='training')
+ax.scatter(emb_app[:,0],emb_app[:,1],c='darkred',alpha=.4,s=25,label='deployment')
+# ax.scatter(emb_court.loc[:,0],emb_court.loc[:,1],c='navy',alpha=.4,s=25,label='training')
+# ax.scatter(emb_app.loc[:,0],emb_app.loc[:,1],c='darkred',alpha=.4,s=25,label='deployment')
 ax.legend(prop={'size': 6})
 fig.savefig('result/6-deployment-pca.png')

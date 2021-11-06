@@ -2,8 +2,28 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import IterativeImputer
 
 np.random.seed(0)
+
+
+def impute_continuous(df, CategoricalFeatures, ContinuousFeatures):
+    '''
+    Create dummy variables for categorical features, and impute continuous features.
+    '''
+    imp = IterativeImputer(max_iter=5, random_state=0)
+    df_temp =  pd.concat( (pd.get_dummies(df[CategoricalFeatures].fillna(-1).astype(int).astype(object),drop_first=False),df[ContinuousFeatures]),axis=1 )
+    for var in CategoricalFeatures:
+        df_temp = df_temp.drop(columns=[var+'_-1'] )
+    filled_array = imp.fit_transform(df_temp)
+    df_filled = pd.DataFrame(data=filled_array, columns=df_temp.keys(), index=df_temp.index)
+    df_out = pd.concat( (df_filled, df['Outcome']),axis=1 )
+    if 'case_identifier' in df.keys():
+        df_out = pd.concat( (df_out, df['case_identifier']),axis=1 )
+    return df_out
+
+
 
 # Correcting some typos on the database
 def get_y_from_string(s):
